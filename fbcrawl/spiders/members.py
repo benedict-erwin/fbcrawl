@@ -1,7 +1,7 @@
 import scrapy
 import logging
 import time
-
+import string
 
 from scrapy.loader import ItemLoader
 from fbcrawl.spiders.fbcrawl import FacebookSpider
@@ -33,11 +33,12 @@ class MembersSpider(FacebookSpider):
             yield scrapy.Request(members, callback=self.parse_members)
         
     def parse_members(self,response):
-        for i,reply in enumerate(response.xpath(".//table[contains(@id,'member_')]//h3//a")):
-            self.logger.info('{} member @ page '.format(i+1))
+        for i,reply in enumerate(response.xpath(".//table[contains(@id, 'member_')]//@id")):
+            rpl = reply.extract()
+            self.logger.info('{} member @ page '.format(rpl))
             new = ItemLoader(item=MembersItem(),selector=reply)
             new.context['lang'] = self.lang
-            new.add_xpath('profile',"substring-before(.//@href, concat(substring('&', 1 div contains(.//@href, 'profile.php')), substring('?', 1 div not(contains(.//@href, 'profile.php')))))")       
+            new.add_value('profile',reply.extract().replace('member_','https://m.facebook.com/profile.php?id='))       
             yield new.load_item()
         new_page = response.xpath("//div/div/a/@href").extract()
         time.sleep(1)
