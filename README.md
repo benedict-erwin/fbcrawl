@@ -132,5 +132,5 @@ Keep in mind that the default behavior is to append the items crawled at the bot
 More information regarding Scrapy's [Deployment](https://doc.scrapy.org/en/latest/topics/deploy.html) and [Common Practices](https://doc.scrapy.org/en/latest/topics/practices.html) are present in the official documentation.
 
 # source
-https://github.com/rugantio/fbcrawl/
-https://github.com/ademjemaa/fbcrawl
+- https://github.com/rugantio/fbcrawl/
+- https://github.com/ademjemaa/fbcrawl
