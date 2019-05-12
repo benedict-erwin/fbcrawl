@@ -1,48 +1,136 @@
-# fbcrawl
-so this project is a personal project for educational purposes on scraping and mining data from a website, the reason I chose facebook is because I use facebook on daily basis and I thought I could use whatever I know on facebook due to me using it all the time and implemant it in my work
-I had no idea how python/scrapy work before i started this, The very first project that i saw that was related to my project was another github project called fbcrawl(https://github.com/rugantio/fbcrawl/), almost everything i learned came from there, i try and work on my project the same way the author of fbcrawl does,
-my spiders (https://docs.scrapy.org/en/latest/topics/spiders.html for further understanding) deal with crawling and scraping data from : 
--PAGES : with a provided page link, credentials and an interface language (currently only french and english, i think the fbcrawl author is working on other languages, i might add more languages later on) and a year and you can have a list of the name of the page, date of post creation, number of reacts, number of comments and  the URL leading to the story
--COMMENTS : with a provided post link, credentials and an interface language you can have a list of the comments made on that post, the list has the profile of the commentator, the post or comment he's replying to, number of reacts on that comment, date of the comment, and the url leading to that comment
--GROUPS : does the exact same thing of the spider of PAGES but with GROUPS instead of pages
--REACTIONS : with a provided post link, credentials and an interface language you can have a list of the reactions made on that post, the list contains the url of the user that reacted and the reaction type
--PROFILE : with a provided profile link, credentials and an interface language you can have information on that profile, including the name of the user, the url of his profile the place and date of birth, and any friends the user allows you to see
+## DISCLAIMER
+This software is not authorized by Facebook and doesn't follow Facebook's [robots.txt](https://www.facebook.com/robots.txt). Scraping without Facebook explicit written is a violation of the [terms and conditions on scraping](http://www.facebook.com/apps/site_scraping_tos_terms.php) and can potentially cause a [lawsuit](https://petewarden.com/2010/04/05/how-i-got-sued-by-facebook/)
 
-my spiders behave the same way a user might behave, first of all they log into facebook, then they ignore the save device step, then they naviguate to the provided URL, and start crawling by selecting information that each spider is designed to collect and then clicks on the next page if needed(see more posts in a group/page, see more friends in a friends list, see more comments in a post)
-my spiders dont crawl facebook as fast as possible and overload the server with requests, they have timers I added in order to make my crawling as "responsible" as possible
+This software is provided as is, for educational purposes, to show how a crawler can be made to recursively parse a facebook page. Use at your own risk.
 
-the spiders are not fully done yet, here's my to do list, i will include detailed tasks that i want to do, the problems that i might/will encounter in order to do these tasks and eventually a solution to these tasks (this is an educational project afterall) :
-THIS LIST WILL GROW AS I ENCOUNTER PROBLEMS OR NEED TO ADD FEATURES IN MY CRAWLER
+# Introduction
+EDIT: fbcrawl can now crawl comments! check out the "how to crawl comments" section!
 
-## TO DO LIST :
+What features can fbcrawl obtain? Everything that you see in the table is crawled by default. I decided to simplify the timestamp feature, leaving out the hour and to ignore comments and commentators, which are going to be parsed post-by-post by another crawler.
 
-1)to do :collect all the spiders in one giant spider instead of diving it to smaller spiders(starting from a page url, the spider will collect all posts made on that page, collect all the reactions and comments made on that post, naviguate and collect information provided by the users that made these comments and reactions on the said post, do the same thing for groups)
+Fbcrawl makes use of an static mobile version of facebook, unknown to many: [https://mbasic.facebook.com](https://mbasic.facebook.com) because it's all plain HTML and we can navigate easily through the pages without having to emulate a browser or inject javascript code.
 
-1)potential problems of the above : the spider needs to naviguate to the needed link, might encounter some problems with the scrapy.request urls, needs further testing
+## Installation
+Requirements are: **python3** (python2 is also supported) and the  **scrapy** framework, that should pull other needed libs as dependencies (twisted, libxml2 etc.).
 
-1)solutions/tips : none yet
+Scrapy can be installed through the package manager of the distribution (in my arch box is simply called "scrapy") or through internal python package system, typing:
 
+ ```pip install scrapy```
 
-2)to do: fix the way the profile urls are collected, currently profile urls are in a rather messy format, i need to add a condition to my selectors to only collect the url until they reach a certain character IF the profile isnt a profile.php kind of profile, otherwise it needs to stop at another set character
+## Architecture
+The way scrapy works is through an engine that manages granularly every step of the crawling process.
 
-2)potential problems of the above : the selector is xpath, however i do not know how to add conditions in xpath, so if they encouter a certain string they do X otherwise they do Y, also i dont know how to stop my selector at a a chain of numbers end and a chain of chars start for the profile.php, will need to look into that
+<img src="https://docs.scrapy.org/en/latest/_images/scrapy_architecture_02.png" width="800">
 
-2)solutions/tips : look into "xpath substring-before"
+The project is thus divided in several files that serve different purposes:
 
+\fbcrawl
+<br />&nbsp;&nbsp;&nbsp;&nbsp;
+    README.md -- this file
+<br />&nbsp;&nbsp;&nbsp;&nbsp;
+    scrapy.cfg -- ini-style file that defines the project
+<br />&nbsp;&nbsp;&nbsp;&nbsp;
+    \fbcrawl
+<br />&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+        \__init.py__
+<br />&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+        **items.py** -- defines the fields that we want to export
+<br />&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+        middlewares.py
+<br />&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+        **pipelines.py** -- defines how we handle each item (the set of fields)
+<br />&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+        **settings.py** -- all the parameter settings of the project
+<br />&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+        \spiders
+<br />&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+        \__init.py__
+<br />&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+        **fbcrawl.py** -- implements the spider for posts
+<br />&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+        **comments.py** -- implements the spider for comments
 
-2)actual solution, concat with a contain (check comments / groups spider)
+## How to crawl a page (fbcrawl.py)
+The core of the crawler is this spider class, `fbcrawl`. On init, it navigates to `mbasic.facebook.com` and logs into facebook according to the provided `credentials`, passed as parameters at execution time (see "How to use"). Then the `parse_page` method is called with the `page` name given at runtime and the crawling process begins recursively retrieving all the posts found in every page. For each of the post it retrieves all the features, using the callback `parse_post`, and all the reactions, using `parse_reactions`.
 
+The webpage are parsed and the fields are extracted using **XPath** selectors. These selectors are implemented on the python lib `lxml` so they are very fast.
 
+Thanks to XPath, scrapy can navigate the webpage in a DOM model, as one would navigate a filesystem, with several features of pattern matching. If you know nothing about XPath [this guide](https://blog.scrapinghub.com/2016/10/27/an-introduction-to-xpath-with-examples/) and [this cheatsheet](https://devhints.io/xpath) can be helpful. Other resources are the original [W3C docs](https://www.w3.org/TR/2017/REC-xpath-31-20170321/) and [XPath functions](https://docs.oracle.com/cd/E35413_01/doc.722/e35419/dev_xpath_functions.htm).
 
-3)to do: export all my items to a database instead of a CSV file
+The XPath are easy to obtain using Firefox's or Chromium's dev tools, but sometimes the field relative to a property changes location, which is something to keep in mind. For example, notice how I had to handle the `source` field using the pipe `|` that is the OR operator: `new.add_xpath('source', '//span/strong/a/text() | //div/a/strong/text() | //td/div/h3/strong/a/text()')`. This kind of juggling is helpful to maintain consistency of the data in our table. The control on the data and the policy to use is often implemented in the Item Pipeline.
 
-3)potential problems of the above : the crawling might lead to hundred of thousands maybe even millions of input in my database, thus the database needs to be very well orgonised in order to function properly and efficiently, also the crawler might be faster be collecting data faster than the data is inserted in my database very further on in my project
+So the parse methods populates Item fields (to be explained in the next section) and pass control over to the Item Loader.
 
-3)solutions/tips : looking into database index fragmentation for now, further on looking into graph databases (the same type of database facebook uses)
+Refer to Scrapy's [Spider documentation](https://docs.scrapy.org/en/latest/topics/spiders.html) for more info.
 
+## Items (items.py)
+This file defines an Item class, so that the fields that we have extracted can be grouped in Items and organized in a more concise manner. Item objects are simple containers used to collect the scraped data. They provide a dictionary-like API with a convenient syntax for declaring their available fields.
 
-4) to do : link a facebook user to a post/page/group via a comment or a reaction
+I have extracted every field present in the post elements and add a few local ones. Namely for each article we have:
 
-4)potential problems of the above : the data might not transfer correctly
+```
+source      -    name of the post publisher, if it's shared it's the original one
+shared_from -    if the post is shared, is the name profile of the original post creator
+date        -    timestamp in datetime.date() format
+text        -    full text of the post, if empty it's a pic or a video
+reactions   -    total number of reactions
+likes       -    number of likes 
+ahah        -    number of ahah
+love        -    number of love
+wow         -    number of wow
+sigh        -    number if sigh
+grrr        -    number of grrr
+comments    -    number of comments
+url         -    relative link to the post
+```
+Notice that this file is also used to modify the fields that we want to change before deciding what to do with the items. To accomplish these kinds of tasks, scrapy provides a series of built-in "`processors`" (such as the `input_processor`) and functions (such as `TakeFirst()`) that we can use to adjust the fields we want. These are explained in the official [Item Loaders](https://docs.scrapy.org/en/latest/topics/loaders.html) section of the documentation.
 
-4)solutions/tips : look into "meta" in the scrapy.request(https://docs.scrapy.org/en/latest/topics/request-response.html?highlight=request%20meta)
+Also Refer to Scrapy's [Item documentation](https://docs.scrapy.org/en/latest/topics/items.html) for more info.
+
+## Settings (settings.py)
+Scrapy is a very powerful framework and it allows complex tweaking to be put in place. In this project we changed just only a handful of settings, but keep in mind that there are a lot of them.
+To make the crawler synchronous and get all the items one-by-one so that they are chronologically ordered in the final CSV you can set CONCURRENT_REQUESTS = 1 in settings.py.
+
+Pipelines are useful methods to manipulate items as you can see from the [official guide](https://doc.scrapy.org/en/latest/topics/item-pipeline.html). In our project I have prepared a pipeline to drop all the posts that were made before a certain date, you can check out the code in `pipelines.py`. Pipelines are not initialized by default, they need to be declared here. Since we can define more than one of them a number in the 0-1000 range is used to indicate priority (lower is first). This is why we have set:
+```
+ITEM_PIPELINES = {
+    'fbcrawl.pipelines.FbcrawlPipeline': 300,
+}
+```
+Besides dropping our items according to timestamp we can also export it locally to a CSV or a JSON. In case we choose to create a CSV file we need to specify the order of the columns by explicitly setting:
+```
+FEED_EXPORT_FIELDS = ["source", "date", "text", "reactions","likes","ahah","love","wow","sigh","grrr","comments","url"]
+```
+Scrapy's default behavior is to follow robots.txt guidelines, so we need to disable this by setting `ROBOTSTXT_OBEY = False`.
+
+## How to use
+
+Make sure that scrapy is installed, and clone this repository. Navigate through the project's top level directory and launch scrapy with:
+```
+scrapy crawl fb -a email="EMAILTOLOGIN" -a password="PASSWORDTOLOGIN" -a page="NAMEOFTHEPAGETOCRAWL" -a date="2018-01-01" -a lang="it" -o DUMPFILE.csv
+
+```
+For example, let's say I want to crawl Donald Trump's page:
+```
+scrapy crawl fb -a email="barackobama@gmail.com" -a password="10wnyu31" -a page="DonaldTrump" -a date="2018-01-01" -a lang="it" -o Trump.csv
+```
+The **email** and **password** are valid fb credentials; the login might be cumbersome and some exceptions are handled, like the "save-device" checkpoint.
+
+The **page** parameter is the name of the page, although full links (with facebook domain inside) are also understood. 
+
+The **date** parameter tells fbcrawl when to stop going back in time; it's optional, the default behavior is to crawl everything available, up to the beginning of 2014.
+
+The **lang** parameter is of recent introduction and it is the language of facebook interface. If the language is not supported, the crawler will **fail**, in this case change your language interface from within facebook (settings -> language). The crawler has support for just a handful of languages at the moment: italian ("it") is the original and best supported, it will return datetime format for every post, english (en), spanish (es), french(fr), portuguese (pt) will also work for crawling but the timestamp of the post will not be in year-month-day format. If not provided, the language interface will be inferred and if it's supported, will be chosen accordingly.
+
+By design scrapy is **asynchronous**, it will not return time ordered rows, you can see that the datetime is not linear. Scrapy makes 16 concurrent requests, which allows to crawl a facebook page recursively really quickly. If you want the crawling (and the CSV) ordered **chronologically** you can add **-s CONCURRENT_REQUESTS=1** at runtime or change the parameter in the settings, keep in mind that crawling will be a lot slower.
+
+While the crawling occurs you can investigate the correct working of the spiders in the console, to show more informations change the last line of settings.py to `LOG_LEVEL = 'DEBUG'`. At the end of the process, if everything has been done right, the result can be visualized on a table.
+
+The "-o " option states that result is to be saved in a .csv file (comma separated values), similar to a txt file that can be interpreted as a table. Fbcrawl can also save to JSON easily, but this feature is not implemented.
+Keep in mind that the default behavior is to append the items crawled at the bottom of the already existing file and not to overwrite it, so you might want to prefix your scrapy command with something like `rm OLDTABLE.csv; scrapy crawl fb etc.`. There are many other ways of exporting, check out the [exporter reference](https://doc.scrapy.org/en/latest/topics/exporters.html) if you want to know more.
+
+More information regarding Scrapy's [Deployment](https://doc.scrapy.org/en/latest/topics/deploy.html) and [Common Practices](https://doc.scrapy.org/en/latest/topics/practices.html) are present in the official documentation.
+
+# source
+https://github.com/rugantio/fbcrawl/
+https://github.com/ademjemaa/fbcrawl
